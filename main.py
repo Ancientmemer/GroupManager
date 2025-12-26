@@ -24,14 +24,14 @@ app = Client(
 
 
 # ✅ Save private users (NON-command messages only)
-@app.on_message(filters.private & ~filters.command)
+@app.on_message(filters.private & ~filters.command())
 async def private_save(_, message):
     if message.from_user:
         await save_user(message.from_user)
 
 
 # ✅ Save groups safely (NON-command, NON-service)
-@app.on_message(filters.group & ~filters.command & ~filters.service)
+@app.on_message(filters.group & ~filters.command() & ~filters.service)
 async def group_save(_, message):
     await save_group(message.chat)
 
