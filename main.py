@@ -24,24 +24,30 @@ app = Client(
 
 
 # =========================================================
-# Save private users (ONLY normal text messages, no commands)
+# Save private users (non-command text only)
 # =========================================================
-@app.on_message(filters.private & filters.text & ~filters.regex(r"^/"))
+@app.on_message(
+    filters.private & filters.text & ~filters.regex(r"^/"),
+    group=2
+)
 async def private_save(_, message):
     if message.from_user:
         await save_user(message.from_user)
 
 
 # =========================================================
-# Save groups (ONLY normal text messages, no commands)
+# Save groups (LOW PRIORITY – after filters)
 # =========================================================
-@app.on_message(filters.group & filters.text & ~filters.regex(r"^/") & ~filters.service)
+@app.on_message(
+    filters.group & filters.text & ~filters.regex(r"^/") & ~filters.service,
+    group=2
+)
 async def group_save(_, message):
     await save_group(message.chat)
 
 
 # =========================================================
-# Register command handlers
+# Register handlers
 # =========================================================
 register_start(app)
 register_help(app)
