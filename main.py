@@ -19,7 +19,7 @@ app = Client(
     bot_token=BOT_TOKEN
 )
 
-@app.on_message(filters.private)
+@app.on_message(filters.private & ~filters.command("start"))
 async def private_save(_, message):
     await save_user(message.from_user)
 
