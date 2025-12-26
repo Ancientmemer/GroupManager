@@ -2,10 +2,10 @@ from .mongodb import db
 
 filters_col = db["filters"]
 
-async def add_filter(chat_id, keyword, reply):
+async def add_filter(chat_id, keyword, data):
     await filters_col.update_one(
         {"chat_id": chat_id, "keyword": keyword},
-        {"$set": {"reply": reply}},
+        {"$set": data},
         upsert=True
     )
 
