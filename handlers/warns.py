@@ -14,27 +14,35 @@ WARN_LIMITS = {}
 def register_warns(app):
 
     # =========================
-    # ADMIN CHECK
+    # ADMIN CHECK (FIXED)
     # =========================
-    async def is_admin(client, chat_id, user_id):
-        member = await client.get_chat_member(chat_id, user_id)
-        return member.status in ("administrator", "owner")
+    async def is_admin(client, message):
+        # Sent as group / channel (admin)
+        if message.sender_chat:
+            return True
+
+        # Normal user admin
+        if message.from_user:
+            member = await client.get_chat_member(
+                message.chat.id,
+                message.from_user.id
+            )
+            return member.status in ("administrator", "owner")
+
+        return False
 
     # =========================
     # RESOLVE USER (reply / username)
     # =========================
     async def get_target_user(client, message):
-        # Reply based
         if message.reply_to_message:
             return message.reply_to_message.from_user
 
-        # Username / ID based
         if len(message.command) >= 2:
             try:
                 return await client.get_users(message.command[1])
             except:
                 return None
-
         return None
 
     # =========================
@@ -42,10 +50,7 @@ def register_warns(app):
     # =========================
     @app.on_message(filters.command("warnlimit") & filters.group)
     async def set_warn_limit(client, message):
-        if not message.from_user:
-            return
-
-        if not await is_admin(client, message.chat.id, message.from_user.id):
+        if not await is_admin(client, message):
             return await message.reply("❌ Admins only.")
 
         if len(message.command) < 2 or not message.command[1].isdigit():
@@ -53,7 +58,6 @@ def register_warns(app):
 
         limit = int(message.command[1])
         WARN_LIMITS[message.chat.id] = limit
-
         await message.reply(f"⚠️ Warn limit set to **{limit}**")
 
     # =========================
@@ -61,10 +65,7 @@ def register_warns(app):
     # =========================
     @app.on_message(filters.command("warn") & filters.group)
     async def warn_user(client, message):
-        if not message.from_user:
-            return
-
-        if not await is_admin(client, message.chat.id, message.from_user.id):
+        if not await is_admin(client, message):
             return await message.reply("❌ Admins only.")
 
         user = await get_target_user(client, message)
@@ -73,7 +74,6 @@ def register_warns(app):
                 "❗ Reply to a user or use:\n`/warn <username> <reason>`"
             )
 
-        # Optional reason
         reason = " ".join(message.command[2:]) if len(message.command) > 2 else None
 
         await typing(client, message.chat.id)
@@ -94,14 +94,11 @@ def register_warns(app):
             await message.reply(text)
 
     # =========================
-    # REMOVE 1 WARN
+    # REMOVE WARN
     # =========================
     @app.on_message(filters.command("rmwarn") & filters.group)
     async def remove_warn(client, message):
-        if not message.from_user:
-            return
-
-        if not await is_admin(client, message.chat.id, message.from_user.id):
+        if not await is_admin(client, message):
             return await message.reply("❌ Admins only.")
 
         user = await get_target_user(client, message)
