@@ -21,10 +21,14 @@ def register_filters(app):
             return await message.reply("❌ Admins only.")
 
         if len(message.command) < 2:
-            return await message.reply("❗ Usage: Reply to a message with `/filter <keyword>`")
+            return await message.reply(
+                "❗ Usage:\nReply to a message with:\n`/filter <keyword>`"
+            )
 
         if not message.reply_to_message:
-            return await message.reply("❗ Reply to a message to save as filter.")
+            return await message.reply(
+                "❗ Reply to a message (text / media) with:\n`/filter <keyword>`"
+            )
 
         keyword = message.command[1].lower()
         reply = message.reply_to_message
@@ -75,13 +79,13 @@ def register_filters(app):
             return await message.reply("❌ Unsupported message type.")
 
         await add_filter(message.chat.id, keyword, data)
-        await message.reply(f"✅ Filter `{keyword}` added successfully.")
+        await message.reply(f"✅ Filter `{keyword}` added successfully!")
 
     # =========================
     # REMOVE SINGLE FILTER
     # =========================
     @app.on_message(filters.command(["stop", "stopfilter"]) & filters.group)
-    async def remove_filter_handler(client, message):
+    async def stop_filter_handler(client, message):
         if not await is_admin(client, message):
             return await message.reply("❌ Admins only.")
 
@@ -101,42 +105,43 @@ def register_filters(app):
             return await message.reply("❌ Admins only.")
 
         await remove_all_filters(message.chat.id)
-        await message.reply("🧹 All filters removed from this group.")
+        await message.reply("🗑️ All filters removed from this group.")
 
     # =========================
     # LIST FILTERS
     # =========================
     @app.on_message(filters.command("filters") & filters.group)
     async def list_filters_handler(client, message):
-        flts = await get_filters(message.chat.id)
-        if not flts:
-            return await message.reply("🧠 No active filters.")
+        filters_list = await get_filters(message.chat.id)
 
-        text = "🧠 **Active Filters:**\n\n"
-        for f in flts:
+        if not filters_list:
+            return await message.reply("🧠 No active filters in this group.")
+
+        text = "🧠 **Active Filters**\n\n"
+        for f in filters_list:
             text += f"• `{f['keyword']}`\n"
 
         await message.reply(text)
 
     # =========================
-    # AUTO FILTER WATCHER
+    # AUTO FILTER REPLY
     # =========================
     @app.on_message(
         filters.group & (filters.text | filters.caption) & ~filters.regex(r"^/"),
         group=10
     )
-    async def filter_watcher(client, message):
-        text = (message.text or message.caption or "").lower().split()
+    async def auto_filter_reply(client, message):
+        text = message.text or message.caption
         if not text:
             return
 
+        words = text.lower().split()
         filters_list = await get_filters(message.chat.id)
         if not filters_list:
             return
 
         for f in filters_list:
-            if f["keyword"] in text:
-
+            if f["keyword"] in words:
                 await typing(client, message.chat.id, 1)
 
                 if f["type"] == "text":
@@ -172,4 +177,5 @@ def register_filters(app):
                         reply_markup=f.get("buttons"),
                         quote=True
                     )
+
                 break
