@@ -1,24 +1,17 @@
 import threading
 import os
 from http.server import BaseHTTPRequestHandler, HTTPServer
+
 from pyrogram import Client
 from config import API_ID, API_HASH, BOT_TOKEN
 
-# Register functions
 from handlers.admin import register_admin
 from handlers.filters import register_filters
 from handlers.commands import register_commands
 from handlers.owner import register_owner
 
-def main():
-    app = Client(
-        "GroupManager",
-        api_id=API_ID,
-        api_hash=API_HASH,
-        bot_token=BOT_TOKEN
-    )
-    
-# ================== UPTIME ROBOT SERVER ==================
+
+# ================== UPTIME SERVER ==================
 class PingHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -31,13 +24,24 @@ class PingHandler(BaseHTTPRequestHandler):
         self.send_header("Content-type", "text/plain")
         self.end_headers()
 
+
 def run_http_server():
     port = int(os.environ.get("PORT", 8080))
     server = HTTPServer(("0.0.0.0", port), PingHandler)
     server.serve_forever()
+# ==================================================
 
-threading.Thread(target=run_http_server, daemon=True).start()
-# ========================================================
+
+def main():
+    app = Client(
+        "GroupManager",
+        api_id=API_ID,
+        api_hash=API_HASH,
+        bot_token=BOT_TOKEN
+    )
+
+    # Start uptime server
+    threading.Thread(target=run_http_server, daemon=True).start()
 
     # Register handlers
     register_admin(app)
