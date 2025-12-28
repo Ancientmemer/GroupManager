@@ -1,50 +1,35 @@
+import random
 from pyrogram import filters
-from pyrogram.types import (
-    InlineKeyboardMarkup,
-    InlineKeyboardButton,
-    InputMediaPhoto
-)
+from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-# ====== CHANGE THESE ======
-BOT_NAME = "Miyamizu"
-UPDATES_CHANNEL = "https://t.me/jb_links"
-SUPPORT_GROUP = "https://t.me/movie_maniac007"
-# ==========================
+
+START_IMAGES = [
+    "https://telegra.ph/file/aaa111.jpg",
+    "https://telegra.ph/file/bbb222.jpg",
+    "https://telegra.ph/file/ccc333.jpg",
+]
 
 
 def register_commands(app):
 
     # =========================
-    # START COMMAND
+    # /START
     # =========================
     @app.on_message(filters.command("start"))
-    async def start_cmd(client, message):
-
-        # 🔹 Multiple images (Media Group)
-        photos = [
-            InputMediaPhoto("https://graph.org/file/5008f7d06e743eaa2244e-3f585d3263200f7cd0.jpg"),
-            InputMediaPhoto("https://graph.org/file/6040b38cb51f5dcea0495-ceb88af1e1e97c9321.jpg"),
-            InputMediaPhoto("https://graph.org/file/1a6821fcdc7fd4aae1eeb-33d7a469df2a984185.jpg")
-        ]
-
-        try:
-            await client.send_media_group(
-                chat_id=message.chat.id,
-                media=photos
-            )
-        except:
-            pass  # if media group fails, ignore
+    async def start(_, message):
+        image = random.choice(START_IMAGES)
 
         text = (
-            f"🤖 **Welcome to {BOT_NAME}!**\n\n"
+            "🤖 **Welcome to Miyamizu!**\n\n"
             "I am a powerful **group management bot**.\n"
             "I help admins manage groups easily with:\n\n"
             "• ⚠️ Warn system\n"
             "• 🧠 Filters\n"
             "• 🔇 Mute / 🚫 Ban\n"
             "• 🤖 Auto replies\n\n"
-            "➕ **Add me to your group and promote me as admin.**\n"
-            "📖 Use /help to see all commands."
+            "➕ Add me to your group and promote me as admin.\n"
+            "📖 Use /help to see all commands.\n"
+            "🆔 Use /id to get user or group ID."
         )
 
         buttons = InlineKeyboardMarkup(
@@ -52,121 +37,123 @@ def register_commands(app):
                 [
                     InlineKeyboardButton(
                         "➕ Add me to your group",
-                        url=f"https://t.me/{(await client.get_me()).username}?startgroup=true"
+                        url=f"https://t.me/{_.me.username}?startgroup=true"
                     )
                 ],
                 [
                     InlineKeyboardButton("ℹ️ Help", callback_data="help_menu"),
-                    InlineKeyboardButton("🌐 Bot Updates", url=UPDATES_CHANNEL)
+                    InlineKeyboardButton("🌐 Bot Updates", url="https://t.me/your_channel")
                 ]
+            ]
+        )
+
+        await message.reply_photo(
+            photo=image,
+            caption=text,
+            reply_markup=buttons
+        )
+
+    # =========================
+    # /HELP
+    # =========================
+    @app.on_message(filters.command("help"))
+    async def help_cmd(_, message):
+        await send_help_menu(message)
+
+    async def send_help_menu(message):
+        text = (
+            "ℹ️ **Miyamizu Help Menu**\n\n"
+            "Choose a category below to see commands."
+        )
+
+        buttons = InlineKeyboardMarkup(
+            [
+                [InlineKeyboardButton("🧠 Filters", callback_data="help_filters")],
+                [InlineKeyboardButton("⚠️ Warnings", callback_data="help_warns")],
+                [InlineKeyboardButton("🛠 Admin Commands", callback_data="help_admin")],
+                [InlineKeyboardButton("👤 User Commands", callback_data="help_user")],
             ]
         )
 
         await message.reply(text, reply_markup=buttons)
 
     # =========================
-    # HELP COMMAND
+    # CALLBACK HANDLER
     # =========================
-    @app.on_message(filters.command("help"))
-    async def help_cmd(client, message):
-        await send_help_menu(message)
+    @app.on_callback_query()
+    async def callbacks(_, query):
+        data = query.data
+
+        if data == "help_menu":
+            text = (
+                "ℹ️ **Miyamizu Help Menu**\n\n"
+                "Select a category:"
+            )
+            buttons = InlineKeyboardMarkup(
+                [
+                    [InlineKeyboardButton("🧠 Filters", callback_data="help_filters")],
+                    [InlineKeyboardButton("⚠️ Warnings", callback_data="help_warns")],
+                    [InlineKeyboardButton("🛠 Admin Commands", callback_data="help_admin")],
+                    [InlineKeyboardButton("👤 User Commands", callback_data="help_user")],
+                ]
+            )
+            await query.message.edit_text(text, reply_markup=buttons)
+
+        elif data == "help_filters":
+            text = (
+                "🧠 **Filters Commands**\n\n"
+                "/filter <keyword> – Add filter (reply)\n"
+                "/stop <keyword> – Remove filter\n"
+                "/filters – List all filters"
+            )
+            await back_menu(query, text)
+
+        elif data == "help_warns":
+            text = (
+                "⚠️ **Warning Commands**\n\n"
+                "/warn – Warn a user\n"
+                "/rmwarn – Remove one warn\n"
+                "/warnings – Check warns\n"
+                "/warnlimit – Set warn limit"
+            )
+            await back_menu(query, text)
+
+        elif data == "help_admin":
+            text = (
+                "🛠 **Admin Commands**\n\n"
+                "/ban / unban\n"
+                "/mute / unmute\n"
+                "/pin\n"
+                "/purge"
+            )
+            await back_menu(query, text)
+
+        elif data == "help_user":
+            text = (
+                "👤 **User Commands**\n\n"
+                "/id – Get user / group ID\n"
+                "/start – Start bot\n"
+                "/help – Help menu"
+            )
+            await back_menu(query, text)
+
+        await query.answer()
+
+    async def back_menu(query, text):
+        buttons = InlineKeyboardMarkup(
+            [[InlineKeyboardButton("🔙 Back", callback_data="help_menu")]]
+        )
+        await query.message.edit_text(text, reply_markup=buttons)
 
     # =========================
-    # ID COMMAND
+    # /ID
     # =========================
     @app.on_message(filters.command("id"))
-    async def id_cmd(client, message):
+    async def id_cmd(_, message):
         if message.chat.type == "private":
-            await message.reply(
-                f"👤 **Your User ID:** `{message.from_user.id}`"
-            )
+            await message.reply(f"🆔 **Your ID:** `{message.from_user.id}`")
         else:
             await message.reply(
-                f"👥 **Group ID:** `{message.chat.id}`"
+                f"👥 **Group ID:** `{message.chat.id}`\n"
+                f"🙋 **Your ID:** `{message.from_user.id}`"
             )
-
-    # =========================
-    # HELP MENU CALLBACK
-    # =========================
-    @app.on_callback_query(filters.regex("^help_menu$"))
-    async def help_menu_cb(client, cb):
-        await send_help_menu(cb.message, edit=True)
-
-    # =========================
-    # HELP SUB MENUS
-    # =========================
-    @app.on_callback_query(filters.regex("^help_"))
-    async def help_sections(client, cb):
-        data = cb.data
-
-        texts = {
-            "help_filters": (
-                "🧠 **Filters Help**\n\n"
-                "• /filter <keyword> (reply to message)\n"
-                "• /filter -admin <keyword>\n"
-                "• /stop <keyword>\n"
-                "• /stopall\n"
-                "• /filters"
-            ),
-            "help_warns": (
-                "⚠️ **Warnings Help**\n\n"
-                "• /warn <reply | user> [reason]\n"
-                "• /rmwarn <reply | user>\n"
-                "• /warnings <reply | user>\n"
-                "• /warnlimit <number>"
-            ),
-            "help_admin": (
-                "👮 **Admin Commands**\n\n"
-                "• /ban /unban\n"
-                "• /mute /unmute\n"
-                "• /pin\n"
-                "• /purge"
-            ),
-            "help_user": (
-                "👤 **User Commands**\n\n"
-                "• /start\n"
-                "• /help\n"
-                "• /id"
-            ),
-        }
-
-        text = texts.get(data, "Unknown section")
-
-        buttons = InlineKeyboardMarkup(
-            [
-                [InlineKeyboardButton("⬅️ Back", callback_data="help_menu")]
-            ]
-        )
-
-        await cb.message.edit(text, reply_markup=buttons)
-
-    # =========================
-    # SHARED HELP MENU FUNCTION
-    # =========================
-    async def send_help_menu(message, edit=False):
-        text = (
-            f"Hey! My name is **{BOT_NAME}** 🤖\n\n"
-            "I am a **group management bot**, here to help you "
-            "keep order in your groups!"
-        )
-
-        buttons = InlineKeyboardMarkup(
-            [
-                [
-                    InlineKeyboardButton("🧠 Filters", callback_data="help_filters"),
-                    InlineKeyboardButton("⚠️ Warnings", callback_data="help_warns")
-                ],
-                [
-                    InlineKeyboardButton("👮 Admin Commands", callback_data="help_admin"),
-                    InlineKeyboardButton("👤 User Commands", callback_data="help_user")
-                ],
-                [
-                    InlineKeyboardButton("⬅️ Back", callback_data="help_menu")
-                ]
-            ]
-        )
-
-        if edit:
-            await message.edit(text, reply_markup=buttons)
-        else:
-            await message.reply(text, reply_markup=buttons)
