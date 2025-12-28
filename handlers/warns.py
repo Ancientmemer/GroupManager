@@ -14,14 +14,13 @@ WARN_LIMITS = {}
 def register_warns(app):
 
     # =========================
-    # ADMIN CHECK (FIXED)
+    # ADMIN CHECK
     # =========================
     async def is_admin(client, message):
-        # Sent as group / channel (admin)
+        # Messages sent as channel (anonymous admin)
         if message.sender_chat:
             return True
 
-        # Normal user admin
         if message.from_user:
             member = await client.get_chat_member(
                 message.chat.id,
@@ -32,10 +31,10 @@ def register_warns(app):
         return False
 
     # =========================
-    # RESOLVE USER (reply / username)
+    # RESOLVE TARGET USER
     # =========================
     async def get_target_user(client, message):
-        if message.reply_to_message:
+        if message.reply_to_message and message.reply_to_message.from_user:
             return message.reply_to_message.from_user
 
         if len(message.command) >= 2:
@@ -54,10 +53,11 @@ def register_warns(app):
             return await message.reply("❌ Admins only.")
 
         if len(message.command) < 2 or not message.command[1].isdigit():
-            return await message.reply("❗ Usage: /warnlimit <number>")
+            return await message.reply("❗ Usage: `/warnlimit <number>`")
 
         limit = int(message.command[1])
         WARN_LIMITS[message.chat.id] = limit
+
         await message.reply(f"⚠️ Warn limit set to **{limit}**")
 
     # =========================
@@ -74,19 +74,35 @@ def register_warns(app):
                 "❗ Reply to a user or use:\n`/warn <username> <reason>`"
             )
 
-        reason = " ".join(message.command[2:]) if len(message.command) > 2 else None
+        # ❌ Prevent warning admins
+        member = await client.get_chat_member(message.chat.id, user.id)
+        if member.status in ("administrator", "owner"):
+            return await message.reply("❌ You can't warn admins.")
 
-        await typing(client, message.chat.id)
+        # Parse reason safely
+        reason = None
+        if message.reply_to_message and len(message.command) > 1:
+            reason = " ".join(message.command[1:])
+        elif len(message.command) > 2:
+            reason = " ".join(message.command[2:])
+
+        await typing(client, message.chat.id, 1)
+
         count = await add_warn(message.chat.id, user.id)
-
         limit = WARN_LIMITS.get(message.chat.id, DEFAULT_WARN_LIMIT)
 
+        # 🚫 Ban if limit reached
         if count >= limit:
-            await client.ban_chat_member(message.chat.id, user.id)
-            await reset_warn(message.chat.id, user.id)
-            await message.reply(
-                f"🚫 {user.mention} banned (warn limit {limit})."
-            )
+            try:
+                await client.ban_chat_member(message.chat.id, user.id)
+                await reset_warn(message.chat.id, user.id)
+                await message.reply(
+                    f"🚫 {user.mention} banned (warn limit {limit})."
+                )
+            except Exception as e:
+                await message.reply(
+                    f"❌ Failed to ban {user.mention}\nError: `{e}`"
+                )
         else:
             text = f"⚠️ {user.mention} warned ({count}/{limit})"
             if reason:
