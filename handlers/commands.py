@@ -157,6 +157,5 @@ def register_commands(app):
             await message.reply(f"🆔 **Your ID:** `{message.from_user.id}`")
         else:
             await message.reply(
-                f"👥 **Group ID:** `{message.chat.id}`\n"
                 f"🙋 **Your ID:** `{message.from_user.id}`"
             )
