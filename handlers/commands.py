@@ -4,9 +4,9 @@ from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 
 START_IMAGES = [
-    "https://telegra.ph/file/aaa111.jpg",
-    "https://telegra.ph/file/bbb222.jpg",
-    "https://telegra.ph/file/ccc333.jpg",
+    "https://graph.org/file/1a6821fcdc7fd4aae1eeb-33d7a469df2a984185.jpg",
+    "https://graph.org/file/6040b38cb51f5dcea0495-ceb88af1e1e97c9321.jpg",
+    "https://graph.org/file/ac7da327e670721e0b0c6-60f85a58a0ffc9130e.jpg",
 ]
 
 
@@ -42,7 +42,7 @@ def register_commands(app):
                 ],
                 [
                     InlineKeyboardButton("ℹ️ Help", callback_data="help_menu"),
-                    InlineKeyboardButton("🌐 Bot Updates", url="https://t.me/your_channel")
+                    InlineKeyboardButton("🌐 Bot Updates", url="https://t.me/jb_links")
                 ]
             ]
         )
@@ -104,7 +104,9 @@ def register_commands(app):
                 "🧠 **Filters Commands**\n\n"
                 "/filter <keyword> – Add filter (reply)\n"
                 "/stop <keyword> – Remove filter\n"
-                "/filters – List all filters"
+                "/filters – List all filters\n"
+                "**Button Adding Example:**\n\n"
+                "[Button Name](buttonurl:https://google.com)"
             )
             await back_menu(query, text)
 
@@ -124,7 +126,8 @@ def register_commands(app):
                 "/ban / unban\n"
                 "/mute / unmute\n"
                 "/pin\n"
-                "/purge"
+                "/purge\n"
+                "/warn / rmwarn"
             )
             await back_menu(query, text)
 
