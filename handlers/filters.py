@@ -8,29 +8,48 @@ from database.filters import (
     remove_all_filters,
     get_filters
 )
-from utils.buttons import parse_buttons
+import re
+
+
+# =========================
+# BUTTON PARSER (SAFE)
+# =========================
+def extract_buttons_and_text(text: str):
+    """
+    Extract [Text](buttonurl:link)
+    Return: clean_text, buttons(list of dict)
+    """
+    buttons = []
+
+    def repl(match):
+        label = match.group(1)
+        url = match.group(2)
+        buttons.append({"text": label, "url": url})
+        return ""  # remove from caption
+
+    clean_text = re.sub(
+        r"\[([^\]]+)\]\(buttonurl:([^)]+)\)",
+        repl,
+        text
+    ).strip()
+
+    return clean_text, buttons
 
 
 def build_buttons(buttons):
-    """
-    buttons format:
-    [
-      {"text": "Join Now", "url": "https://t.me/jb_links"}
-    ]
-    """
     if not buttons:
         return None
 
-    keyboard = []
-    for btn in buttons:
-        if isinstance(btn, dict):
-            keyboard.append(
-                [InlineKeyboardButton(btn["text"], url=btn["url"])]
-            )
-
-    return InlineKeyboardMarkup(keyboard) if keyboard else None
+    keyboard = [
+        [InlineKeyboardButton(b["text"], url=b["url"])]
+        for b in buttons
+    ]
+    return InlineKeyboardMarkup(keyboard)
 
 
+# =========================
+# REGISTER FILTERS
+# =========================
 def register_filters(app):
 
     # =========================
@@ -42,9 +61,7 @@ def register_filters(app):
             return await message.reply("❌ Admins only.")
 
         if not message.reply_to_message:
-            return await message.reply(
-                "❗ Reply to a message with:\n`/filter <keyword>`"
-            )
+            return await message.reply("❗ Reply to a message with /filter <keyword>")
 
         if len(message.command) < 2:
             return await message.reply("❗ Usage: /filter <keyword>")
@@ -61,34 +78,47 @@ def register_filters(app):
 
         # TEXT
         if reply.text:
-            data["type"] = "text"
-            data["text"] = reply.text
-            data["buttons"] = parse_buttons(reply.text)
+            clean, buttons = extract_buttons_and_text(reply.text)
+            data.update({
+                "type": "text",
+                "text": clean,
+                "buttons": buttons
+            })
 
         # PHOTO
         elif reply.photo:
-            data["type"] = "photo"
-            data["file_id"] = reply.photo.file_id
-            data["caption"] = reply.caption
-            data["buttons"] = parse_buttons(reply.caption or "")
+            caption = reply.caption or ""
+            clean, buttons = extract_buttons_and_text(caption)
+            data.update({
+                "type": "photo",
+                "file_id": reply.photo.file_id,
+                "caption": clean,
+                "buttons": buttons
+            })
 
         # VIDEO
         elif reply.video:
-            data["type"] = "video"
-            data["file_id"] = reply.video.file_id
-            data["caption"] = reply.caption
-            data["buttons"] = parse_buttons(reply.caption or "")
+            caption = reply.caption or ""
+            clean, buttons = extract_buttons_and_text(caption)
+            data.update({
+                "type": "video",
+                "file_id": reply.video.file_id,
+                "caption": clean,
+                "buttons": buttons
+            })
 
         # STICKER
         elif reply.sticker:
-            data["type"] = "sticker"
-            data["file_id"] = reply.sticker.file_id
+            data.update({
+                "type": "sticker",
+                "file_id": reply.sticker.file_id
+            })
 
         else:
             return await message.reply("❌ Unsupported message type.")
 
         await add_filter(message.chat.id, keyword, data)
-        await message.reply(f"✅ Filter `{keyword}` added.")
+        await message.reply(f"✅ Filter `{keyword}` added successfully!")
 
     # =========================
     # REMOVE FILTER
@@ -101,9 +131,8 @@ def register_filters(app):
         if len(message.command) < 2:
             return await message.reply("❗ Usage: /stop <keyword>")
 
-        keyword = message.command[1].lower()
-        await remove_filter(message.chat.id, keyword)
-        await message.reply(f"❌ Filter `{keyword}` removed.")
+        await remove_filter(message.chat.id, message.command[1].lower())
+        await message.reply("❌ Filter removed.")
 
     # =========================
     # STOP ALL
@@ -122,14 +151,12 @@ def register_filters(app):
     @app.on_message(filters.command("filters") & filters.group)
     async def list_filters(client, message):
         filters_list = await get_filters(message.chat.id)
-
         if not filters_list:
             return await message.reply("🧠 No active filters.")
 
         text = "🧠 **Active Filters**\n\n"
         for f in filters_list:
             text += f"• `{f['keyword']}`\n"
-
         await message.reply(text)
 
     # =========================
@@ -137,20 +164,15 @@ def register_filters(app):
     # =========================
     @app.on_message(filters.group & filters.text & ~filters.command([]))
     async def watch(client, message):
-        text = message.text.lower()
-
+        words = message.text.lower().split()
         filters_list = await get_filters(message.chat.id)
-        if not filters_list:
-            return
 
         for f in filters_list:
-            if f["keyword"] in text.split():
-
+            if f["keyword"] in words:
                 if f.get("admin_only") and not await is_admin(client, message):
                     continue
 
                 await typing(client, message.chat.id, 1)
-
                 markup = build_buttons(f.get("buttons"))
 
                 if f["type"] == "text":
