@@ -8,7 +8,6 @@ from database.filters import (
     remove_all_filters,
     get_filters
 )
-from database.connections import get_connection
 import re
 
 
@@ -35,7 +34,8 @@ def extract_buttons_and_text(text: str):
 
 
 # =========================
-# INLINE KEYBOARD EXTRACT
+# INLINE KEYBOARD → DB FORMAT
+# (FORWARDED MESSAGES)
 # =========================
 def extract_inline_keyboard(reply_markup):
     if not reply_markup or not reply_markup.inline_keyboard:
@@ -57,7 +57,8 @@ def extract_inline_keyboard(reply_markup):
 
 
 # =========================
-# BUILD BUTTONS (2 PER ROW)
+# BUILD INLINE BUTTONS
+# ✅ 2 BUTTONS PER ROW
 # =========================
 def build_buttons(buttons):
     if not buttons:
@@ -65,6 +66,7 @@ def build_buttons(buttons):
 
     keyboard = []
 
+    # Case 1: already row-based (forwarded inline buttons)
     if isinstance(buttons[0], list):
         for row in buttons:
             keyboard.append([
@@ -72,6 +74,7 @@ def build_buttons(buttons):
                 for b in row
             ])
     else:
+        # Case 2: flat list → make 2 buttons per row
         row = []
         for btn in buttons:
             row.append(
@@ -87,32 +90,6 @@ def build_buttons(buttons):
 
 
 # =========================
-# HELPER: TARGET CHAT
-# =========================
-async def get_target_chat(client, message):
-    # GROUP MODE
-    if message.chat.type != "private":
-        if not await is_admin(client, message):
-            await message.reply("❌ Admins only.")
-            return None
-        return message.chat.id
-
-    # PM MODE
-    data = await get_connection(message.from_user.id)
-    if not data:
-        await message.reply("❗ Use `/connect <group_id>` first.")
-        return None
-
-    group_id = data["group_id"]
-
-    if not await is_admin(client, message, chat_id=group_id):
-        await message.reply("❌ You are not admin of the connected group.")
-        return None
-
-    return group_id
-
-
-# =========================
 # REGISTER FILTERS
 # =========================
 def register_filters(app):
@@ -120,16 +97,15 @@ def register_filters(app):
     # =========================
     # ADD FILTER
     # =========================
-    @app.on_message(filters.command("filter"))
+    @app.on_message(filters.command("filter") & filters.group)
     async def add(client, message):
-        chat_id = await get_target_chat(client, message)
-        if not chat_id:
-            return
+        if not await is_admin(client, message):
+            return await message.reply("❌ Admins only.")
 
         if not message.reply_to_message:
             return await message.reply(
                 "❗ Reply to a message with:\n"
-                "`/filter word`\n"
+                "`/filter <word>`\n"
                 "`/filter \"full sentence\"`"
             )
 
@@ -140,66 +116,96 @@ def register_filters(app):
         keyword = raw[1].strip()
         if keyword.startswith('"') and keyword.endswith('"'):
             keyword = keyword[1:-1]
-        keyword = keyword.lower()
 
+        keyword = keyword.lower()
         reply = message.reply_to_message
 
         data = {
-            "chat_id": chat_id,
+            "chat_id": message.chat.id,
             "keyword": keyword,
             "admin_only": False,
             "buttons": []
         }
 
+        # 🔥 Priority: forwarded inline buttons
         inline_buttons = extract_inline_keyboard(reply.reply_markup)
 
+        # ================= TEXT =================
         if reply.text:
             clean, text_buttons = extract_buttons_and_text(reply.text)
             data.update({
                 "type": "text",
                 "text": clean,
-                "buttons": inline_buttons or text_buttons
+                "buttons": inline_buttons if inline_buttons else text_buttons
             })
 
+        # ================= PHOTO =================
         elif reply.photo:
-            clean, text_buttons = extract_buttons_and_text(reply.caption or "")
+            caption = reply.caption or ""
+            clean, text_buttons = extract_buttons_and_text(caption)
             data.update({
                 "type": "photo",
                 "file_id": reply.photo.file_id,
                 "caption": clean,
-                "buttons": inline_buttons or text_buttons
+                "buttons": inline_buttons if inline_buttons else text_buttons
             })
 
+        # ================= VIDEO =================
         elif reply.video:
-            clean, text_buttons = extract_buttons_and_text(reply.caption or "")
+            caption = reply.caption or ""
+            clean, text_buttons = extract_buttons_and_text(caption)
             data.update({
                 "type": "video",
                 "file_id": reply.video.file_id,
                 "caption": clean,
-                "buttons": inline_buttons or text_buttons
+                "buttons": inline_buttons if inline_buttons else text_buttons
             })
 
+        # ================= STICKER =================
         elif reply.sticker:
             data.update({
                 "type": "sticker",
                 "file_id": reply.sticker.file_id
             })
+
         else:
             return await message.reply("❌ Unsupported message type.")
 
-        await add_filter(chat_id, keyword, data)
-        await message.reply(f"✅ Filter added:\n`{keyword}`")
+        await add_filter(message.chat.id, keyword, data)
+        await message.reply(f"✅ Filter added for:\n`{keyword}`")
+
+    # =========================
+    # REMOVE FILTER
+    # =========================
+    @app.on_message(filters.command("stop") & filters.group)
+    async def stop(client, message):
+        if not await is_admin(client, message):
+            return await message.reply("❌ Admins only.")
+
+        keyword = message.text.split(maxsplit=1)[1].strip().lower()
+        if keyword.startswith('"') and keyword.endswith('"'):
+            keyword = keyword[1:-1]
+
+        await remove_filter(message.chat.id, keyword)
+        await message.reply("❌ Filter removed.")
+
+    # =========================
+    # STOP ALL
+    # =========================
+    @app.on_message(filters.command("stopall") & filters.group)
+    async def stopall(client, message):
+        if not await is_admin(client, message):
+            return await message.reply("❌ Admins only.")
+
+        await remove_all_filters(message.chat.id)
+        await message.reply("🧹 All filters removed.")
 
     # =========================
     # LIST FILTERS
     # =========================
-    @app.on_message(filters.command("filters"))
+    @app.on_message(filters.command("filters") & filters.group)
     async def list_filters(client, message):
-        chat_id = await get_target_chat(client, message)
-        if not chat_id:
-            return
-
-        filters_list = await get_filters(chat_id)
+        filters_list = await get_filters(message.chat.id)
         if not filters_list:
             return await message.reply("🧠 No active filters.")
 
@@ -210,35 +216,7 @@ def register_filters(app):
         await message.reply(text)
 
     # =========================
-    # STOP FILTER
-    # =========================
-    @app.on_message(filters.command("stop"))
-    async def stop(client, message):
-        chat_id = await get_target_chat(client, message)
-        if not chat_id:
-            return
-
-        keyword = message.text.split(maxsplit=1)[1].strip().lower()
-        if keyword.startswith('"') and keyword.endswith('"'):
-            keyword = keyword[1:-1]
-
-        await remove_filter(chat_id, keyword)
-        await message.reply("❌ Filter removed.")
-
-    # =========================
-    # STOP ALL
-    # =========================
-    @app.on_message(filters.command("stopall"))
-    async def stopall(client, message):
-        chat_id = await get_target_chat(client, message)
-        if not chat_id:
-            return
-
-        await remove_all_filters(chat_id)
-        await message.reply("🧹 All filters removed.")
-
-    # =========================
-    # WATCH (GROUP ONLY)
+    # WATCH MESSAGES
     # =========================
     @app.on_message(filters.group & filters.text & ~filters.command([]))
     async def watch(client, message):
@@ -247,23 +225,31 @@ def register_filters(app):
 
         for f in filters_list:
             if f["keyword"] in text:
+
+                if f.get("admin_only") and not await is_admin(client, message):
+                    continue
+
                 await typing(client, message.chat.id, 1)
                 markup = build_buttons(f.get("buttons"))
 
                 if f["type"] == "text":
                     await message.reply(f["text"], reply_markup=markup)
+
                 elif f["type"] == "photo":
                     await message.reply_photo(
                         f["file_id"],
                         caption=f.get("caption"),
                         reply_markup=markup
                     )
+
                 elif f["type"] == "video":
                     await message.reply_video(
                         f["file_id"],
                         caption=f.get("caption"),
                         reply_markup=markup
                     )
+
                 elif f["type"] == "sticker":
                     await message.reply_sticker(f["file_id"])
+
                 break
