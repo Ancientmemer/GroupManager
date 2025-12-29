@@ -8,12 +8,8 @@ from database.filters import (
     remove_all_filters,
     get_filters
 )
+from database.connections import get_connection
 import re
-
-# =========================
-# CONNECTED GROUP (PM MODE)
-# =========================
-CONNECTED_GROUP = {}  # user_id -> group_id
 
 
 # =========================
@@ -91,50 +87,38 @@ def build_buttons(buttons):
 
 
 # =========================
+# HELPER: TARGET CHAT
+# =========================
+async def get_target_chat(client, message):
+    # GROUP MODE
+    if message.chat.type != "private":
+        if not await is_admin(client, message):
+            await message.reply("❌ Admins only.")
+            return None
+        return message.chat.id
+
+    # PM MODE
+    data = await get_connection(message.from_user.id)
+    if not data:
+        await message.reply("❗ Use `/connect <group_id>` first.")
+        return None
+
+    group_id = data["group_id"]
+
+    if not await is_admin(client, message, chat_id=group_id):
+        await message.reply("❌ You are not admin of the connected group.")
+        return None
+
+    return group_id
+
+
+# =========================
 # REGISTER FILTERS
 # =========================
 def register_filters(app):
 
     # =========================
-    # CONNECT COMMAND (PM)
-    # =========================
-    @app.on_message(filters.command("connect") & filters.private)
-    async def connect(client, message):
-        if len(message.command) < 2:
-            return await message.reply("❗ Usage: `/connect <group_id>`")
-
-        try:
-            group_id = int(message.command[1])
-        except:
-            return await message.reply("❌ Invalid group id.")
-
-        if not await is_admin(client, message, chat_id=group_id):
-            return await message.reply("❌ You must be admin in that group.")
-
-        CONNECTED_GROUP[message.from_user.id] = group_id
-        await message.reply(f"✅ Connected to group:\n`{group_id}`")
-
-    # =========================
-    # HELPER: TARGET CHAT
-    # =========================
-    async def get_target_chat(client, message):
-        if message.chat.type == "private":
-            gid = CONNECTED_GROUP.get(message.from_user.id)
-            if not gid:
-                await message.reply("❗ Use `/connect <group_id>` first.")
-                return None
-            if not await is_admin(client, message, chat_id=gid):
-                await message.reply("❌ You are not admin of connected group.")
-                return None
-            return gid
-        else:
-            if not await is_admin(client, message):
-                await message.reply("❌ Admins only.")
-                return None
-            return message.chat.id
-
-    # =========================
-    # ADD FILTER (GROUP + PM)
+    # ADD FILTER
     # =========================
     @app.on_message(filters.command("filter"))
     async def add(client, message):
