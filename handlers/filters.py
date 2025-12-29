@@ -66,7 +66,7 @@ def build_buttons(buttons):
 
     keyboard = []
 
-    # Case 1: already row-based (forwarded inline buttons)
+    # Forwarded inline buttons (already rows)
     if isinstance(buttons[0], list):
         for row in buttons:
             keyboard.append([
@@ -74,7 +74,7 @@ def build_buttons(buttons):
                 for b in row
             ])
     else:
-        # Case 2: flat list → make 2 buttons per row
+        # Text buttons → 2 per row
         row = []
         for btn in buttons:
             row.append(
@@ -95,12 +95,15 @@ def build_buttons(buttons):
 def register_filters(app):
 
     # =========================
-    # ADD FILTER
+    # ADD FILTER (GROUP + PM)
     # =========================
-    @app.on_message(filters.command("filter") & filters.group)
+    @app.on_message(filters.command("filter"))
     async def add(client, message):
-        if not await is_admin(client, message):
-            return await message.reply("❌ Admins only.")
+
+        # Admin check only for groups
+        if message.chat.type != "private":
+            if not await is_admin(client, message):
+                return await message.reply("❌ Admins only.")
 
         if not message.reply_to_message:
             return await message.reply(
@@ -119,15 +122,15 @@ def register_filters(app):
 
         keyword = keyword.lower()
         reply = message.reply_to_message
+        chat_id = message.chat.id  # (later replaced by connected group id)
 
         data = {
-            "chat_id": message.chat.id,
+            "chat_id": chat_id,
             "keyword": keyword,
             "admin_only": False,
             "buttons": []
         }
 
-        # 🔥 Priority: forwarded inline buttons
         inline_buttons = extract_inline_keyboard(reply.reply_markup)
 
         # ================= TEXT =================
@@ -171,18 +174,24 @@ def register_filters(app):
         else:
             return await message.reply("❌ Unsupported message type.")
 
-        await add_filter(message.chat.id, keyword, data)
+        await add_filter(chat_id, keyword, data)
         await message.reply(f"✅ Filter added for:\n`{keyword}`")
 
     # =========================
-    # REMOVE FILTER
+    # REMOVE FILTER (GROUP + PM)
     # =========================
-    @app.on_message(filters.command("stop") & filters.group)
+    @app.on_message(filters.command("stop"))
     async def stop(client, message):
-        if not await is_admin(client, message):
-            return await message.reply("❌ Admins only.")
 
-        keyword = message.text.split(maxsplit=1)[1].strip().lower()
+        if message.chat.type != "private":
+            if not await is_admin(client, message):
+                return await message.reply("❌ Admins only.")
+
+        raw = message.text.split(maxsplit=1)
+        if len(raw) < 2:
+            return await message.reply("❗ Usage: /stop <keyword>")
+
+        keyword = raw[1].strip().lower()
         if keyword.startswith('"') and keyword.endswith('"'):
             keyword = keyword[1:-1]
 
@@ -190,20 +199,22 @@ def register_filters(app):
         await message.reply("❌ Filter removed.")
 
     # =========================
-    # STOP ALL
+    # STOP ALL (GROUP + PM)
     # =========================
-    @app.on_message(filters.command("stopall") & filters.group)
+    @app.on_message(filters.command("stopall"))
     async def stopall(client, message):
-        if not await is_admin(client, message):
-            return await message.reply("❌ Admins only.")
+
+        if message.chat.type != "private":
+            if not await is_admin(client, message):
+                return await message.reply("❌ Admins only.")
 
         await remove_all_filters(message.chat.id)
         await message.reply("🧹 All filters removed.")
 
     # =========================
-    # LIST FILTERS
+    # LIST FILTERS (GROUP + PM)
     # =========================
-    @app.on_message(filters.command("filters") & filters.group)
+    @app.on_message(filters.command("filters"))
     async def list_filters(client, message):
         filters_list = await get_filters(message.chat.id)
         if not filters_list:
@@ -216,7 +227,7 @@ def register_filters(app):
         await message.reply(text)
 
     # =========================
-    # WATCH MESSAGES
+    # WATCH MESSAGES (GROUP ONLY)
     # =========================
     @app.on_message(filters.group & filters.text & ~filters.command([]))
     async def watch(client, message):
