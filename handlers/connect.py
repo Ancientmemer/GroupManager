@@ -1,6 +1,6 @@
 from pyrogram import filters
 from utils.admin import is_admin
-from database.connection import (
+from database.connections import (
     set_connection,
     get_connection,
     clear_connection
