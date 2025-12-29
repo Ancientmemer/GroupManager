@@ -3,18 +3,17 @@ from .mongodb import db
 conn_col = db.connections
 
 
-async def set_connection(user_id: int, chat_id: int):
+async def set_connection(user_id, group_id):
     await conn_col.update_one(
         {"user_id": user_id},
-        {"$set": {"chat_id": chat_id}},
+        {"$set": {"group_id": group_id}},
         upsert=True
     )
 
 
-async def get_connection(user_id: int):
-    data = await conn_col.find_one({"user_id": user_id})
-    return data["chat_id"] if data else None
+async def get_connection(user_id):
+    return await conn_col.find_one({"user_id": user_id})
 
 
-async def clear_connection(user_id: int):
+async def clear_connection(user_id):
     await conn_col.delete_one({"user_id": user_id})
