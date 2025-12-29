@@ -12,31 +12,47 @@ import re
 
 
 # =========================
-# BUTTON + TEXT EXTRACTOR
+# TEXT BUTTON PARSER
 # =========================
 def extract_buttons_and_text(text: str):
-    """
-    Extract buttons in format:
-    [Text](buttonurl:https://example.com)
-
-    Returns:
-    clean_text, buttons(list of dict)
-    """
     buttons = []
 
     def repl(match):
-        label = match.group(1)
-        url = match.group(2)
-        buttons.append({"text": label, "url": url})
-        return ""  # remove from text
+        buttons.append({
+            "text": match.group(1),
+            "url": match.group(2)
+        })
+        return ""
 
     clean_text = re.sub(
         r"\[([^\]]+)\]\(buttonurl:([^)]+)\)",
         repl,
-        text
+        text or ""
     ).strip()
 
     return clean_text, buttons
+
+
+# =========================
+# INLINE KEYBOARD → DB FORMAT
+# =========================
+def extract_inline_keyboard(reply_markup):
+    if not reply_markup or not reply_markup.inline_keyboard:
+        return []
+
+    keyboard = []
+    for row in reply_markup.inline_keyboard:
+        btn_row = []
+        for btn in row:
+            if btn.url:
+                btn_row.append({
+                    "text": btn.text,
+                    "url": btn.url
+                })
+        if btn_row:
+            keyboard.append(btn_row)
+
+    return keyboard
 
 
 # =========================
@@ -46,10 +62,13 @@ def build_buttons(buttons):
     if not buttons:
         return None
 
-    keyboard = [
-        [InlineKeyboardButton(b["text"], url=b["url"])]
-        for b in buttons
-    ]
+    keyboard = []
+    for row in buttons:
+        keyboard.append([
+            InlineKeyboardButton(b["text"], url=b["url"])
+            for b in row
+        ])
+
     return InlineKeyboardMarkup(keyboard)
 
 
@@ -73,7 +92,6 @@ def register_filters(app):
                 "`/filter \"full sentence\"`"
             )
 
-        # 🔹 Extract keyword (supports quotes)
         raw = message.text.split(maxsplit=1)
         if len(raw) < 2:
             return await message.reply("❗ Usage: /filter <keyword>")
@@ -92,35 +110,38 @@ def register_filters(app):
             "buttons": []
         }
 
+        # 🔥 PRIORITY: INLINE BUTTONS FROM FORWARDED MSG
+        inline_buttons = extract_inline_keyboard(reply.reply_markup)
+
         # ================= TEXT =================
         if reply.text:
-            clean, buttons = extract_buttons_and_text(reply.text)
+            clean, text_buttons = extract_buttons_and_text(reply.text)
             data.update({
                 "type": "text",
                 "text": clean,
-                "buttons": buttons
+                "buttons": inline_buttons or [text_buttons] if text_buttons else inline_buttons
             })
 
         # ================= PHOTO =================
         elif reply.photo:
             caption = reply.caption or ""
-            clean, buttons = extract_buttons_and_text(caption)
+            clean, text_buttons = extract_buttons_and_text(caption)
             data.update({
                 "type": "photo",
                 "file_id": reply.photo.file_id,
                 "caption": clean,
-                "buttons": buttons
+                "buttons": inline_buttons or [text_buttons] if text_buttons else inline_buttons
             })
 
         # ================= VIDEO =================
         elif reply.video:
             caption = reply.caption or ""
-            clean, buttons = extract_buttons_and_text(caption)
+            clean, text_buttons = extract_buttons_and_text(caption)
             data.update({
                 "type": "video",
                 "file_id": reply.video.file_id,
                 "caption": clean,
-                "buttons": buttons
+                "buttons": inline_buttons or [text_buttons] if text_buttons else inline_buttons
             })
 
         # ================= STICKER =================
@@ -143,9 +164,6 @@ def register_filters(app):
     async def stop(client, message):
         if not await is_admin(client, message):
             return await message.reply("❌ Admins only.")
-
-        if len(message.command) < 2:
-            return await message.reply("❗ Usage: /stop <keyword>")
 
         keyword = message.text.split(maxsplit=1)[1].strip().lower()
         if keyword.startswith('"') and keyword.endswith('"'):
@@ -189,10 +207,7 @@ def register_filters(app):
         filters_list = await get_filters(message.chat.id)
 
         for f in filters_list:
-            keyword = f["keyword"]
-
-            # 🔥 SENTENCE / WORD MATCH
-            if keyword in text:
+            if f["keyword"] in text:
 
                 if f.get("admin_only") and not await is_admin(client, message):
                     continue
