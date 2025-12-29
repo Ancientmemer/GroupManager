@@ -35,6 +35,7 @@ def extract_buttons_and_text(text: str):
 
 # =========================
 # INLINE KEYBOARD → DB FORMAT
+# (FORWARDED MESSAGES)
 # =========================
 def extract_inline_keyboard(reply_markup):
     if not reply_markup or not reply_markup.inline_keyboard:
@@ -57,17 +58,33 @@ def extract_inline_keyboard(reply_markup):
 
 # =========================
 # BUILD INLINE BUTTONS
+# ✅ 2 BUTTONS PER ROW
 # =========================
 def build_buttons(buttons):
     if not buttons:
         return None
 
     keyboard = []
-    for row in buttons:
-        keyboard.append([
-            InlineKeyboardButton(b["text"], url=b["url"])
-            for b in row
-        ])
+
+    # Case 1: already row-based (forwarded inline buttons)
+    if isinstance(buttons[0], list):
+        for row in buttons:
+            keyboard.append([
+                InlineKeyboardButton(b["text"], url=b["url"])
+                for b in row
+            ])
+    else:
+        # Case 2: flat list → make 2 buttons per row
+        row = []
+        for btn in buttons:
+            row.append(
+                InlineKeyboardButton(btn["text"], url=btn["url"])
+            )
+            if len(row) == 2:
+                keyboard.append(row)
+                row = []
+        if row:
+            keyboard.append(row)
 
     return InlineKeyboardMarkup(keyboard)
 
@@ -110,7 +127,7 @@ def register_filters(app):
             "buttons": []
         }
 
-        # 🔥 PRIORITY: INLINE BUTTONS FROM FORWARDED MSG
+        # 🔥 Priority: forwarded inline buttons
         inline_buttons = extract_inline_keyboard(reply.reply_markup)
 
         # ================= TEXT =================
@@ -119,7 +136,7 @@ def register_filters(app):
             data.update({
                 "type": "text",
                 "text": clean,
-                "buttons": inline_buttons or [text_buttons] if text_buttons else inline_buttons
+                "buttons": inline_buttons if inline_buttons else text_buttons
             })
 
         # ================= PHOTO =================
@@ -130,7 +147,7 @@ def register_filters(app):
                 "type": "photo",
                 "file_id": reply.photo.file_id,
                 "caption": clean,
-                "buttons": inline_buttons or [text_buttons] if text_buttons else inline_buttons
+                "buttons": inline_buttons if inline_buttons else text_buttons
             })
 
         # ================= VIDEO =================
@@ -141,7 +158,7 @@ def register_filters(app):
                 "type": "video",
                 "file_id": reply.video.file_id,
                 "caption": clean,
-                "buttons": inline_buttons or [text_buttons] if text_buttons else inline_buttons
+                "buttons": inline_buttons if inline_buttons else text_buttons
             })
 
         # ================= STICKER =================
